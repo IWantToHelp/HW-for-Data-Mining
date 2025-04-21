@@ -1,18 +1,16 @@
 import pandas as pd
-from surprise import Dataset, Reader, KNNBasic
+from surprise import Dataset, Reader, KNNBasic, SVD
 from surprise.model_selection import cross_validate
 import matplotlib
-# --- FIX: Force Matplotlib to use a non-GUI backend ---
-# This must be done BEFORE importing pyplot
+# runs Matplotlib to use a non-GUI backend 
+# I am using WSL to run the code so this was necessary
 matplotlib.use('Agg')
-# --- End Fix ---
 import matplotlib.pyplot as plt
 import numpy as np
 import io
-import time # Import time for measuring execution
+import time 
 
-# --- Data Loading ---
-# Assuming 'ratings_small.csv' is in the same directory as the script
+# Loading data
 file_path = 'ratings_small.csv'
 
 print("--- Loading Data ---")
@@ -21,6 +19,73 @@ try:
 except UnicodeDecodeError:
     print("UTF-8 decoding failed, trying latin1 encoding.")
     df = pd.read_csv(file_path, encoding='latin1')
+    
+# Print column names to verify they are read correctly
+print("Columns in the CSV:", df.columns)
+print("\nFirst 5 rows of the dataframe:")
+print(df.head())
+
+# Loading Data for Surpise
+expected_columns = ['userId', 'movieId', 'rating', 'timestamp']
+if list(df.columns) == expected_columns:
+    print("\nHeader row seems correct.")
+    reader = Reader(rating_scale=(df['rating'].min(), df['rating'].max())) # Dynamically set rating scale
+    data = Dataset.load_from_df(df[['userId', 'movieId', 'rating']], reader)
+    print("Data loaded successfully into Surprise format.")
+else:
+    raise ValueError("Please check the CSV file's header and column names.")
+
+
+# Models
+# User-based Collaborative Filtering (cosine)
+sim_options_user = {'name': 'cosine', 'user_based': True}
+algo_user_based = KNNBasic(sim_options=sim_options_user)
+
+# Item-based Collaborative Filtering (cosine)
+sim_options_item = {'name': 'cosine', 'user_based': False}
+algo_item_based = KNNBasic(sim_options=sim_options_item)
+
+# Probabilistic Matrix Factorization (PMF) - Surprise uses SVD algorithm has to be unbased to follow PMF
+algo_pmf = SVD(biased=False)
+
+# cross validation
+results = {}
+models = {
+    "User-based CF": algo_user_based,
+    "Item-based CF": algo_item_based,
+    "PMF (SVD biased=False)": algo_pmf
+}
+
+print("\nStarting 5-fold cross-validation for each model...")
+
+for name, algo in models.items():
+    print(f"  Processing: {name}")
+    # Perform cross-validation
+    cv_results = cross_validate(algo, data, measures=['RMSE', 'MAE'], cv=5, verbose=True, n_jobs=-1)
+
+    # Calculate and store average MAE and RMSE
+    avg_mae = cv_results['test_mae'].mean()
+    avg_rmse = cv_results['test_rmse'].mean()
+    results[name] = {'MAE': avg_mae, 'RMSE': avg_rmse}
+    print(f"  Finished: {name}")
+
+# Results for C/D
+# Convert results dictionary to a pandas DataFrame for clearer display
+results_df = pd.DataFrame(results).T  # Transpose for model-wise rows
+
+print("\n--- Average Cross-Validation Results ---")
+# Format the output for better readability
+print(results_df.round(4))
+
+# Determine the best model based on lowest average RMSE and MAE
+best_rmse_model = results_df['RMSE'].idxmin()
+min_rmse = results_df['RMSE'].min()
+best_mae_model = results_df['MAE'].idxmin()
+min_mae = results_df['MAE'].min()
+
+print("\n--- Model Comparison ---")
+print(f"Best model according to RMSE: {best_rmse_model} (RMSE = {min_rmse:.4f})")
+print(f"Best model according to MAE:  {best_mae_model} (MAE = {min_mae:.4f})")
 
 print("Columns in the CSV:", df.columns)
 # Basic check for expected columns
@@ -40,7 +105,7 @@ data = Dataset.load_from_df(df_load, reader)
 print("Data loaded successfully into Surprise format.")
 print("-" * 30)
 
-# --- Part e: Similarity Metric Comparison ---
+# Comparing similarity metrics
 print("\n--- Part e: Evaluating Similarity Metrics ---")
 similarity_metrics = ['cosine', 'msd', 'pearson']
 results_similarity = {'User-based CF': {}, 'Item-based CF': {}}
@@ -130,7 +195,7 @@ print("\n--- Part f & g: Evaluating Number of Neighbors (K) ---")
 chosen_similarity = 'msd'
 print(f"Using '{chosen_similarity}' similarity for neighbor analysis.")
 
-k_values = range(5, 51, 5) # Test K from 5 to 50 in steps of 5
+k_values = range(5, 101, 5) # Test K from 5 to 50 in steps of 5
 results_k_user = {}
 results_k_item = {}
 

@@ -3,26 +3,23 @@ import numpy as np
 import matplotlib.pyplot as plt
 import random
 import time
-from scipy.stats import mode as scipy_mode # Use scipy's mode for majority voting
+from scipy.stats import mode as scipy_mode 
 from collections import Counter
 
-# --- Configuration ---
+# Configuration 
 # Set a random seed for reproducibility
 np.random.seed(42)
 random.seed(42)
 
-# --- File Paths ---
+# File Paths
 DATA_FILE = 'data.csv'
 LABEL_FILE = 'label.csv'
 
 # --- Data Loading ---
 print(f"Loading data from {DATA_FILE}...")
 try:
-    # Load the features, assuming no header row
+    # Load the features
     data = pd.read_csv(DATA_FILE, header=None)
-    # Ensure data is non-negative for Generalized Jaccard (min/max assumes non-negative)
-    # If data can be negative, the interpretation of Generalized Jaccard might need adjustment.
-    # Clipping at 0 is a common approach if negative values are small noise.
     X = np.clip(data.values, 0, None)
     print(f"Data loaded successfully: {X.shape[0]} samples, {X.shape[1]} features")
     if np.any(X < 0):
@@ -57,13 +54,11 @@ except Exception as e:
 # --- Distance Functions ---
 
 def euclidean_distance(point1, point2):
-    """Calculates the Euclidean distance between two points (vectors)."""
     point1 = np.asarray(point1)
     point2 = np.asarray(point2)
     return np.sqrt(np.sum((point1 - point2) ** 2))
 
 def cosine_distance(point1, point2):
-    """Calculates the Cosine distance between two points (vectors)."""
     point1 = np.asarray(point1)
     point2 = np.asarray(point2)
     norm1 = np.linalg.norm(point1)
@@ -74,45 +69,26 @@ def cosine_distance(point1, point2):
     similarity = np.clip(similarity, -1.0, 1.0)
     return 1.0 - similarity
 
-# def jaccard_distance(point1, point2): # Standard Binary Jaccard - kept for reference
-#     """Calculates the Jaccard distance between two BINARY points (vectors)."""
-#     point1 = np.asarray(point1).astype(bool)
-#     point2 = np.asarray(point2).astype(bool)
-#     intersection = np.sum(point1 & point2)
-#     union = np.sum(point1 | point2)
-#     if union == 0: return 0.0
-#     similarity = intersection / union
-#     return 1.0 - similarity
-
 def generalized_jaccard_distance(point1, point2):
-    """
-    Calculates the Generalized Jaccard distance (1 - Ružička similarity)
-    between two continuous, non-negative points (vectors).
-    Formula: 1 - (sum(min(p1_i, p2_i)) / sum(max(p1_i, p2_i)))
-    """
+    # Calculates the Generalized Jaccard distance (1 - Jaccard similarity)
+    # Formula: 1 - (sum(min(p1_i, p2_i)) / sum(max(p1_i, p2_i)))
     point1 = np.asarray(point1)
     point2 = np.asarray(point2)
-
-    # Ensure non-negativity (already done during loading, but good practice)
-    # point1 = np.maximum(point1, 0)
-    # point2 = np.maximum(point2, 0)
 
     min_sum = np.sum(np.minimum(point1, point2))
     max_sum = np.sum(np.maximum(point1, point2))
 
     if max_sum == 0:
-        # This happens only if both vectors are all zeros
         return 0.0
 
     similarity = min_sum / max_sum
-    # Distance is 1 - similarity
     return 1.0 - similarity
 
 
 # --- Helper Functions ---
 
 def get_distance_function(metric_name):
-    """Returns the appropriate distance function based on the metric name."""
+    # Returns the appropriate distance function based on the metric name.
     if metric_name == 'euclidean':
         return euclidean_distance
     elif metric_name == 'cosine':
@@ -125,14 +101,14 @@ def get_distance_function(metric_name):
         raise ValueError(f"Unknown distance metric: {metric_name}")
 
 def initialize_centroids_random(X, k):
-    """Initializes k centroids by randomly selecting k data points from X."""
+    # Initializes k centroids by randomly selecting k data points from X.
     n_samples = X.shape[0]
     random_indices = np.random.choice(n_samples, k, replace=False)
     centroids = X[random_indices]
     return centroids
 
 def assign_clusters(X, centroids, distance_func):
-    """Assigns each data point in X to the nearest centroid using the specified distance function."""
+    # Assigns each data point in X to the nearest centroid using the specified distance function.
     n_samples = X.shape[0]
     k = centroids.shape[0]
     cluster_assignments = np.zeros(n_samples, dtype=int)
@@ -145,10 +121,6 @@ def assign_clusters(X, centroids, distance_func):
     return cluster_assignments
 
 def update_centroids(X, cluster_assignments, k):
-    """
-    Updates the centroids based on the mean of points in each cluster.
-    This standard mean update is used for Euclidean, Cosine, and Generalized Jaccard here.
-    """
     n_features = X.shape[1]
     new_centroids = np.zeros((k, n_features))
 
@@ -166,7 +138,6 @@ def update_centroids(X, cluster_assignments, k):
     return new_centroids
 
 def calculate_sse(X, centroids, cluster_assignments, distance_func):
-    """Calculates the Sum of Squared Errors (SSE) for the clustering."""
     sse = 0.0
     k = centroids.shape[0]
     for j in range(k):
@@ -177,7 +148,6 @@ def calculate_sse(X, centroids, cluster_assignments, distance_func):
     return sse
 
 def calculate_accuracy(true_labels, cluster_assignments, k):
-    """Calculates clustering accuracy using majority vote labeling."""
     n_samples = len(true_labels)
     cluster_labels = np.zeros(k, dtype=int)
 
@@ -202,23 +172,6 @@ def calculate_accuracy(true_labels, cluster_assignments, k):
 # --- K-Means Algorithm Implementation ---
 
 def kmeans(X_input, k, distance_metric, max_iterations=100, tolerance=1e-4, stop_on_sse_increase=False):
-    """
-    Performs K-means clustering with specified distance metric and stop criteria.
-
-    Args:
-        X_input (np.ndarray): The dataset (n_samples, n_features).
-                               Should be NON-NEGATIVE for 'generalized_jaccard'.
-        k (int): The number of clusters.
-        distance_metric (str): 'euclidean', 'cosine', or 'generalized_jaccard'.
-        max_iterations (int): Maximum number of iterations.
-        tolerance (float): Threshold for centroid movement convergence.
-                           Set to 0 for exact match stop condition.
-                           Set to infinity if only relying on other criteria.
-        stop_on_sse_increase (bool): If True, stop if SSE increases.
-
-    Returns:
-        dict: A dictionary containing results.
-    """
     start_time = time.time()
     print(f"\nStarting K-Means with metric='{distance_metric}', k={k}, max_iter={max_iterations}, tol={tolerance}, stop_on_sse_increase={stop_on_sse_increase}")
 
