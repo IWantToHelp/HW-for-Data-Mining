@@ -171,7 +171,6 @@ axs_sim[1].legend()
 plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust layout to prevent title overlap
 plt.savefig('similarity_comparison.png') # Save the plot
 print("\nSimilarity comparison plot saved as 'similarity_comparison.png'")
-# plt.show() # Still commented out, not needed when saving file
 
 # Consistency Check
 print("\nConsistency Check:")
@@ -261,4 +260,3 @@ else:
     print("\nThe best K value is different for User-based and Item-based collaborative filtering.")
 print("-" * 30)
 
-print("\nAnalysis complete.")
